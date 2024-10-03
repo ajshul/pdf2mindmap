@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { pdfjs } from 'react-pdf';
 import OpenAI from 'openai';
 import { motion } from 'framer-motion';
-import { Upload, FileText, Map } from 'lucide-react';
+import { Upload, FileText, Map, Edit3 } from 'lucide-react';
+import { Transformer } from 'markmap-lib';
+import { Markmap } from 'markmap-view';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 
 const openai = new OpenAI({ apiKey: process.env.REACT_APP_OPENAI_API_KEY, dangerouslyAllowBrowser: true });
@@ -12,31 +14,54 @@ export default function MindMapApp() {
   const [mindMapMarkdown, setMindMapMarkdown] = useState('');
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
-  const markMapRef = useRef(null);
+  const [editMode, setEditMode] = useState(false);
+  const svgRef = useRef(null);
+  const markmapRef = useRef(null);
 
   useEffect(() => {
     pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.mjs`;
   }, []);
 
   useEffect(() => {
-    if (mindMapMarkdown && markMapRef.current) {
-      // Clear previous content
-      markMapRef.current.innerHTML = '';
-      
-      // Create a new script element with the markdown content
-      const scriptEl = document.createElement('script');
-      scriptEl.type = 'text/template';
-      scriptEl.textContent = mindMapMarkdown;
-      markMapRef.current.appendChild(scriptEl);
-
-      // Trigger markmap rendering
-      if (window.markmap) {
-        window.markmap.autoLoader.renderAll();
-      } else {
-        console.error('Markmap autoLoader not found');
+    if (mindMapMarkdown && svgRef.current) {
+      if (markmapRef.current) {
+        markmapRef.current.destroy();
       }
+
+      const transformer = new Transformer();
+      const { root } = transformer.transform(mindMapMarkdown);
+
+      const mm = Markmap.create(svgRef.current, {
+        autoFit: true,
+        color: (node) => {
+          const level = node.state.depth;
+          return ['#4285f4', '#34a853', '#fbbc05', '#ea4335'][level % 4];
+        },
+        duration: 500,
+        maxWidth: 300,
+        nodeMinHeight: 16,
+        spacingHorizontal: 80,
+        spacingVertical: 5,
+        autoFit: true,
+        fitRatio: 0.95,
+      }, root);
+
+      markmapRef.current = mm;
+
+      const handleNodeClick = (node) => {
+        if (editMode) {
+          const newContent = prompt('Edit node:', node.content);
+          if (newContent !== null && newContent.trim() !== '') {
+            node.content = newContent;
+            const newMarkdown = generateMarkdownFromTree(root);
+            setMindMapMarkdown(newMarkdown);
+          }
+        }
+      };
+
+      mm.svg.selectAll('g[data-depth]').on('click', (event, d) => handleNodeClick(d.data));
     }
-  }, [mindMapMarkdown]);
+  }, [mindMapMarkdown, editMode]);
 
   const extractTextFromPDF = async (file) => {
     const reader = new FileReader();
@@ -65,7 +90,7 @@ export default function MindMapApp() {
       const response = await openai.chat.completions.create({
         model: "gpt-4",
         messages: [
-          { role: "system", content: `You will be creating a detailed and structured Markdown format mindmap based on the content of a PDF. This mindmap will be used with the markmap-autoloader API to render a visual representation of the PDF's content. Your task is to analyze the provided PDF text and generate a hierarchical structure that captures the main ideas, subtopics, and important details.
+          { role: "system", content: `You will be creating a detailed and structured Markdown format mindmap based on the content of a PDF. This mindmap will be used with the markmap library to render a visual representation of the PDF's content. Your task is to analyze the provided PDF text and generate a hierarchical structure that captures the main ideas, subtopics, and important details.
 
 Here is the text of the PDF:
 
@@ -131,12 +156,12 @@ Now, analyze the provided PDF text and create a detailed and structured Markdown
 Please wrap your markdown mindmap output within <mindmap> tags and provide nothing else.` },
         ],
       });
+
       const content = response.choices[0].message.content;
       
       // Extract content from <mindmap> tags
       const mindmapRegex = /<mindmap>([\s\S]*?)<\/mindmap>/;
       const match = content.match(mindmapRegex);
-      console.log(content);
       if (match && match[1]) {
         setMindMapMarkdown(match[1].trim());
       } else {
@@ -156,6 +181,20 @@ Please wrap your markdown mindmap output within <mindmap> tags and provide nothi
       setFileName(file.name);
       extractTextFromPDF(file);
     }
+  };
+
+  const toggleEditMode = () => {
+    setEditMode(!editMode);
+  };
+
+  const generateMarkdownFromTree = (node, depth = 0) => {
+    let markdown = '  '.repeat(depth) + '- ' + node.content + '\n';
+    if (node.children) {
+      for (const child of node.children) {
+        markdown += generateMarkdownFromTree(child, depth + 1);
+      }
+    }
+    return markdown;
   };
 
   return (
@@ -206,9 +245,21 @@ Please wrap your markdown mindmap output within <mindmap> tags and provide nothi
             className="mt-8"
           >
             <h2 className="text-2xl font-bold mb-4 text-[#4285f4]">Generated Mind Map</h2>
-            <div ref={markMapRef} className="markmap border-2 border-[#4285f4] rounded-lg p-4 bg-[#e8f0fe] shadow-inner">
-              {/* Markmap will be rendered here */}
+            <div className="border-2 border-[#4285f4] rounded-lg p-4 bg-[#e8f0fe] shadow-inner" style={{ height: '600px', overflow: 'hidden' }}>
+              <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
             </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleEditMode}
+              className="mt-4 w-full bg-[#4285f4] text-white font-bold py-3 px-6 rounded-lg shadow-md flex items-center justify-center hover:bg-[#3367d6] transition duration-300 ease-in-out"
+            >
+              {editMode ? (
+                <><Edit3 className="mr-2" size={24} /> Exit Edit Mode</>
+              ) : (
+                <><Edit3 className="mr-2" size={24} /> Enter Edit Mode</>
+              )}
+            </motion.button>
           </motion.div>
         )}
       </motion.div>
