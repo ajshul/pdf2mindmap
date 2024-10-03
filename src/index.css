@@ -1,3 +1,7 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -7,7 +11,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+.markmap {
+  position: relative;
+  width: 100%;
+  height: 400px;
+  background-color: #f3e8ff;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.markmap > svg {
+  width: 100%;
+  height: 100%;
 }
