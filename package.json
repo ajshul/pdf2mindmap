@@ -9,6 +9,7 @@
     "framer-motion": "^11.11.0",
     "lucide-react": "^0.447.0",
     "openai": "^4.67.1",
+    "pdfjs-dist": "^4.6.82",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-pdf": "^9.1.1",
